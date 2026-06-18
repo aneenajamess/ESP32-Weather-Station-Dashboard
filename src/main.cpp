@@ -11,8 +11,12 @@ Adafruit_BMP085 bmp;
 
 const int BUFFER_SIZE = 10;
 float tempBuffer[BUFFER_SIZE]; 
-int index = 0;             
-int totalReadings = 0;         
+int ind = 0;             
+int totalReadings = 0;      
+// Temporary variables to store our fresh telemetry data
+float temperature = 0.0;
+float pressure = 0.0;
+
 
 // Non-blocking timer variables
 unsigned long lastRefreshTime = 0;
@@ -36,49 +40,60 @@ void initializeSystem() {
   }
 }
 
+
+
 // Function to handle reading the sensor and updating our circular buffer
-void readSensorAndTrack(float &tempOut, float &pressOut) {
-  float temp=bmp.readTemperature();
-  float press=bmp.readPressure();
-  tempBuffer[index]=temp;
-  index=(index+1)% BUFFER_SIZE;
+void readSensorAndTrack() {
+  temperature=bmp.readTemperature();
+  pressure=bmp.readPressure();
+
+  tempBuffer[ind]=temperature;
+  ind=(ind+1)% BUFFER_SIZE;
 
   if (totalReadings < BUFFER_SIZE) {
     totalReadings++;
   }
 }
 
-void drawDisplay(float temp, float press){
+void drawDisplay(){
   u8g2.clearBuffer();
   u8g2.setFont(u8g2_font_ncenB08_tr);
 
-  u8g2.setCursor(0,20);
+  u8g2.setCursor(0,10);
   u8g2.print("BMP085 Readings:");
 
-  u8g2.setCursor(0,22);
+  u8g2.setCursor(0,20);
   u8g2.print("Temp: ");
-  u8g2.print(temp);
+  u8g2.print(temperature);
   u8g2.print(" C");
 
-  u8g2.setCursor(0,26);
+  u8g2.setCursor(0,30);
   u8g2.print("Pressure: ");
-  u8g2.print(press);
+  u8g2.print(pressure/100.0);
   u8g2.print(" Pa");
 
 
   //Draw Temperature line graph
-  u8g2.drawFrame(75, 4, 50, 24); // Graph box
-
   int graphxstart=75;
+  int graphystart=34;
+  int boxwidth=48;
+  int boxheight=29;
+
+  u8g2.drawFrame(graphxstart,graphystart,boxwidth, boxheight); //  box
   int temp_step=5;
 
   for(int i=0;i<10;i++){
-    float temp_mapped=map(int(tempBuffer[i]),0,40,0,14);
-    int plotY=constrain(temp_mapped,0,14);
-    int plotX=(graphxstart +i)*(temp_step);
-    int prevplotY=constrain(map(int(tempBuffer[i-1]),0,40,0,14),0,14);
-    int prevplotX=(graphxstart +(i-1))*(temp_step);
-    u8g2.drawLine(prevplotX, 64-prevplotY, plotX, 64-plotY);
+    float tempconstrain=constrain(tempBuffer[i],0,40);
+    int plotY=map((tempconstrain),0,40,0,boxheight-2);
+    
+    int plotX=(graphxstart)+(i*(temp_step));
+    if (i>0){
+      int prevplotY=map(constrain(tempBuffer[i-1],0,40),0,40,0,boxheight-2);
+      int prevplotX=(graphxstart)+((i-1)*(temp_step));
+
+      u8g2.drawLine(prevplotX, graphystart+boxheight-prevplotY, plotX, graphystart+boxheight-plotY);
+    }
+    
 
   }
   u8g2.sendBuffer();
@@ -101,14 +116,10 @@ void loop() {
   if (currentTime - lastRefreshTime >= interval) {
     lastRefreshTime = currentTime;
 
-    // Temporary variables to store our fresh telemetry data
-    float temperature = 0.0;
-    float pressure = 0.0;
-
     // Step A: Fetch values and push them into the tracking buffer
-    readSensorAndTrack(temperature, pressure);
+    readSensorAndTrack();
 
     // Step B: Send those values over to the UI engine to be drawn
-    drawDisplay(temperature, pressure);
+    drawDisplay();
   }
 }
